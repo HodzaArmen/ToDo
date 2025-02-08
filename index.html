@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ToDo List</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+</head>
+<body>
+    <div class="container">
+        <h1>ToDo List</h1>
+        <div class="input-container">
+            <input type="text" id="taskInput" placeholder="Vnesite nalogo">
+            <button onclick="addTask()">Dodaj</button>
+        </div>
+        <ul id="taskList"></ul>
+        <button class="icon-button" onclick="toggleDeletedTasks()">
+            &#128465; <!-- Trash can icon -->
+        </button>
+        <div id="deletedTasksContainer" style="display: none;">
+            <ul id="deletedTaskList"></ul>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        async function loadTasks() {
+            try {
+                let response = await fetch('http://localhost:3000/tasks');
+                let tasks = await response.json();
+                let taskList = document.getElementById("taskList");
+                taskList.innerHTML = "";
+                tasks.forEach(task => {
+                    let li = document.createElement("li");
+                    let taskText = document.createElement("span");
+                    taskText.textContent = task.text;
+                    taskText.style.textDecoration = task.completed ? "line-through" : "none";
+                    taskText.onclick = () => toggleTask(task.id);
+
+                    let buttonContainer = document.createElement("div");
+                    buttonContainer.className = "button-container";
+                    buttonContainer.appendChild(createButton("&#9998;", "edit", () => editTask(task.id, task.text)));
+                    buttonContainer.appendChild(createButton("&#10006;", "delete", () => deleteTask(task.id)));
+                    buttonContainer.appendChild(createButton("&#10003;", "complete", () => toggleTask(task.id)));
+
+                    li.appendChild(taskText);
+                    li.appendChild(buttonContainer);
+                    taskList.appendChild(li);
+                });
+            } catch (error) {
+                console.error('Napaka pri nalaganju nalog:', error);
+            }
+        }
+
+        async function loadDeletedTasks() {
+            try {
+                let response = await fetch('http://localhost:3000/tasks/deleted');
+                let tasks = await response.json();
+                let deletedTaskList = document.getElementById("deletedTaskList");
+                deletedTaskList.innerHTML = "";
+                tasks.forEach(task => {
+                    let li = document.createElement("li");
+                    let deletedDate = new Date(task.timestamp);
+                    deletedDate.setHours(deletedDate.getHours() + 1); // Adjust for time zone
+                    let formattedDate = deletedDate.toLocaleString('sl-SI', { dateStyle: 'short', timeStyle: 'short' });
+                    li.textContent = `${task.text} (Izbrisano: ${formattedDate})`;
+
+                    let deleteForeverButton = createButton("&#10006;", "delete-forever", () => deleteTaskForever(task.id));
+                    li.appendChild(deleteForeverButton);
+                    deletedTaskList.appendChild(li);
+                });
+            } catch (error) {
+                console.error('Napaka pri nalaganju izbrisanih nalog:', error);
+            }
+        }
+
+        function toggleDeletedTasks() {
+            let container = document.getElementById("deletedTasksContainer");
+            if (container.style.display === "none") {
+                container.style.display = "block";
+                loadDeletedTasks();
+            } else {
+                container.style.display = "none";
+            }
+        }
+
+        function createButton(innerHTML, className, onClick) {
+            let button = document.createElement("button");
+            button.innerHTML = innerHTML;
+            button.className = `icon-button ${className}`;
+            button.onclick = (e) => {
+                e.stopPropagation();
+                onClick();
+            };
+            return button;
+        }
+
+        async function addTask() {
+            let text = document.getElementById("taskInput").value;
+            if (text) {
+                try {
+                    await fetch('http://localhost:3000/tasks', { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' }, 
+                        body: JSON.stringify({ text }) 
+                    });
+                    document.getElementById("taskInput").value = "";
+                    loadTasks();
+                } catch (error) {
+                    console.error('Napaka pri dodajanju naloge:', error);
+                }
+            }
+        }
+
+        async function toggleTask(id) {
+            try {
+                await fetch(`http://localhost:3000/tasks/${id}`, { method: 'PUT' });
+                loadTasks();
+            } catch (error) {
+                console.error('Napaka pri spreminjanju stanja naloge:', error);
+            }
+        }
+
+        async function deleteTask(id) {
+            try {
+                await fetch(`http://localhost:3000/tasks/${id}`, { method: 'DELETE' });
+                loadTasks();
+            } catch (error) {
+                console.error('Napaka pri brisanju naloge:', error);
+            }
+        }
+
+        async function deleteTaskForever(id) {
+            try {
+                const result = await Swal.fire({
+                    title: 'Ali ste prepričani?',
+                    text: "Tega ne boste mogli razveljaviti!",
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#d33',
+                    cancelButtonColor: '#3085d6',
+                    confirmButtonText: 'Da, izbriši!'
+                });
+
+                if (result.isConfirmed) {
+                    await fetch(`http://localhost:3000/tasks/forever/${id}`, { method: 'DELETE' });
+                    Swal.fire(
+                        'Izbrisano!',
+                        'Vaša naloga je bila trajno izbrisana.',
+                        'success'
+                    );
+                    loadDeletedTasks();
+                }
+            } catch (error) {
+                console.error('Napaka pri trajnem brisanju naloge:', error);
+            }
+        }
+
+        function editTask(id, oldText) {
+            let newText = prompt("Uredi nalogo:", oldText);
+            if (newText) {
+                fetch(`http://localhost:3000/tasks/${id}`, { 
+                    method: 'PUT', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify({ text: newText }) 
+                }).then(loadTasks).catch(error => {
+                    console.error('Napaka pri urejanju naloge:', error);
+                });
+            }
+        }
+
+        loadTasks();
+    </script>
+</body>
+</html>
